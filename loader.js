@@ -1,11 +1,7 @@
 const {loadImage, createCanvas} = require("canvas");
 const fs = require("fs");
-const {multiPolygon, featureCollection, lineString, multiLineString} = require("@turf/helpers");
-const {polygonToLine} = require("@turf/polygon-to-line");
+const {featureCollection, lineString, multiLineString} = require("@turf/helpers");
 const bboxClip = require("@turf/bbox-clip").default;
-const {toWgs84} = require("@turf/projection");
-const {getGeom} = require("@turf/invariant");
-const {JSDOM} = require('jsdom');
 const proj4 = require("proj4");
 
 const recursiveProjection = (array, zoom, x, y) => {
@@ -14,7 +10,6 @@ const recursiveProjection = (array, zoom, x, y) => {
   	proj4.defs(proj_key, `+proj=merc +a=${Math.pow(2, zoom + 7) / Math.PI} +b=${Math.pow(2, zoom + 7) / Math.PI} +lat_ts=0.0 +lon_0=0.0 +x_0=${Math.pow(2, zoom + 7)} +y_0=${Math.pow(2, zoom + 7)} +k=1.0 +units=m +nadgrids=@null +no_defs`);
   }
 
-  const isArray = array[0] instanceof Array;
   return array[0] instanceof Array ? 
     array.map((item) => recursiveProjection(item, zoom, x, y)) : 
     proj4(proj_key, "EPSG:4326", [(array[0] + 0.5) + (x - 1) * 256, Math.pow(2, zoom + 7) * 2 - (array[1] + 0.5) -  (y - 1) * 256]);
@@ -31,9 +26,7 @@ const recursiveKillNull = (array) => {
   }, undefined);
 };
 
-//console.log(recursiveProjection([256, 256], 15, 29084, 12842));
-
-async function loader(zoom, x, y, dems) {
+async function loader(zoom, x, y, dems, interval) {
   const d3 = await import("d3");
 
   if (!(dems instanceof Array)) {
@@ -43,8 +36,10 @@ async function loader(zoom, x, y, dems) {
   x = x != null ? x : 29084;
   y = y != null ? y : 12842;
   if (!dems.length) dems.push("dem5a");
+  interval = interval != null ? interval : 0.5;
+  const wh = 256 * 3;
   const relative_coords = [[-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 0], [0, 1], [1, -1], [1, 0], [1, 1]];
-  const canvas = createCanvas(768, 768);
+  const canvas = createCanvas(wh, wh);
   const context = canvas.getContext('2d');
   const coord_images = await Promise.all(relative_coords.map(async (coords) => {
     const lx = x + coords[0];
@@ -63,17 +58,17 @@ async function loader(zoom, x, y, dems) {
   const buffer = canvas.toBuffer('image/png');
   fs.writeFileSync('./image.png', buffer);
 
-  let r, g, b, xx, h
+  let r, g, b, xx, min = null, max = null;
   const u = 0.01 // 標高分解能0.01m
-  const data = context.getImageData(0, 0, 768, 768).data;
-  const n = 768, m = 768, values = new Array(n * m);
+  const data = context.getImageData(0, 0, wh, wh).data;
+  const values = new Array(wh * wh);
 
-  for (let ly = 0; ly < m; ly++) {
-    for (let lx = 0; lx < n; lx++) {
-      const k = ly * n + lx;
+  for (let ly = 0; ly < wh; ly++) {
+    for (let lx = 0; lx < wh; lx++) {
+      const k = ly * wh + lx;
       const base = k * 4
 
-      if ( data[ base + 3 ] == 0 )  {
+      if ( data[ base + 3 ] === 0 )  {
         values[k] = 0;
       } else {
         r = data[ base ];
@@ -81,24 +76,28 @@ async function loader(zoom, x, y, dems) {
         b = data[ base + 2 ];
         xx = 2**16 * r + 2**8 * g + b;
         values[k] = ( xx <  2**23 ) ? xx * u: ( x - 2 ** 24 ) * u;
+        if (min == null) {
+          min = max = values[k];
+        } else if (values[k] < min && values[k] > -100) {
+          min = values[k];
+        } else if (values[k] > max) {
+          max = values[k];
+        }
       }
     }
   }
-  const contour_array = d3.contours()
-    .size([n, m])
-    .thresholds([8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 10, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30])
-    (values);
-  const document = new JSDOM().window.document;
-  var svg = d3.select(document.body).append("svg").attr("width", 768).attr("height", 768);
-  svg.selectAll("path")
-    .data(contour_array)
-    .enter()
-    .append("path")
-    .attr("d", d3.geoPath(d3.geoIdentity().scale(1)))
-    .attr("stroke","white")
-    .attr("stroke-width","0.5");
 
-  fs.writeFileSync('./test.svg', document.body.innerHTML);
+  const intmin = Math.ceil(min / interval);
+  const intmax = Math.floor(max / interval);
+  const thresholds = [];
+  for (let i = intmin; i <= intmax; i++) {
+    thresholds.push(i * interval);
+  }
+
+  const contour_array = d3.contours()
+    .size([wh, wh])
+    .thresholds(thresholds)
+    (values);
 
   const sw = recursiveProjection([256, 512], zoom, x, y);
   const ne = recursiveProjection([512, 216], zoom, x, y);
