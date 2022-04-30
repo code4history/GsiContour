@@ -1,0 +1,23 @@
+{
+  "name": "gsicontour",
+  "version": "1.0.0",
+  "description": "",
+  "main": "loader.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@turf/bbox-clip": "^6.5.0",
+    "@turf/helpers": "^6.5.0",
+    "@turf/invariant": "^6.5.0",
+    "@turf/polygon-to-line": "^6.5.0",
+    "@turf/projection": "^6.5.0",
+    "canvas": "^2.9.1",
+    "d3": "^7.4.4",
+    "d3-contour": "^3.0.1",
+    "jsdom": "^19.0.0",
+    "proj4": "^2.8.0"
+  }
+}
