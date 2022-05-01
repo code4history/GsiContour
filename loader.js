@@ -3,6 +3,7 @@ const fs = require("fs");
 const {featureCollection, lineString, multiLineString} = require("@turf/helpers");
 const bboxClip = require("@turf/bbox-clip").default;
 const proj4 = require("proj4");
+const geojsonvt = require('geojson-vt');
 
 const recursiveProjection = (array, zoom, x, y) => {
   const proj_key = `PROJKEY:${zoom}`;
@@ -100,7 +101,7 @@ async function loader(zoom, x, y, dems, interval) {
     (values);
 
   const sw = recursiveProjection([256, 512], zoom, x, y);
-  const ne = recursiveProjection([512, 216], zoom, x, y);
+  const ne = recursiveProjection([512, 256], zoom, x, y);
   const final = featureCollection(contour_array.reduce((prev, contour) => {
     if (contour.coordinates.length === 0) return prev;
     const lineArray = [];
@@ -116,6 +117,13 @@ async function loader(zoom, x, y, dems, interval) {
     prev.push(multiLineString(lineArray, {value: contour.value}));
     return prev;
   }, []));
+  const tileIndex = geojsonvt(final, {
+    maxZoom: 15,
+    buffer: 64
+  });
+  const pbt = tileIndex.getTile(zoom, x, y).features;
+  console.log(pbt);
+
   fs.writeFileSync('./test.geojson', JSON.stringify(final));
 }
 
