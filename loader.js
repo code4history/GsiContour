@@ -1,9 +1,8 @@
 const {loadImage, createCanvas} = require("canvas");
 const fs = require("fs");
 const {featureCollection, lineString, multiLineString} = require("@turf/helpers");
-const bboxClip = require("@turf/bbox-clip").default;
 const proj4 = require("proj4");
-const geojsonvt = require('geojson-vt');
+const modified_geojson2mvt = require("./modified_geojson2vt");
 
 const recursiveProjection = (array, zoom, x, y) => {
   const proj_key = `PROJKEY:${zoom}`;
@@ -27,7 +26,7 @@ const recursiveKillNull = (array) => {
   }, undefined);
 };
 
-async function loader(zoom, x, y, dems, interval) {
+async function loader(zoom, x, y, dems, interval, bold) {
   const d3 = await import("d3");
 
   if (!(dems instanceof Array)) {
@@ -35,9 +34,10 @@ async function loader(zoom, x, y, dems, interval) {
   }
   zoom = zoom != null ? zoom : 15;
   x = x != null ? x : 29084;
-  y = y != null ? y : 12842;
+  y = y != null ? y : 12841;
   if (!dems.length) dems.push("dem5a");
   interval = interval != null ? interval : 0.5;
+  bold = bold != null ? bold : 2.5;
   const wh = 256 * 3;
   const relative_coords = [[-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 0], [0, 1], [1, -1], [1, 0], [1, 1]];
   const canvas = createCanvas(wh, wh);
@@ -102,29 +102,27 @@ async function loader(zoom, x, y, dems, interval) {
 
   const sw = recursiveProjection([256, 512], zoom, x, y);
   const ne = recursiveProjection([512, 256], zoom, x, y);
-  const final = featureCollection(contour_array.reduce((prev, contour) => {
+  const noClip = featureCollection(contour_array.reduce((prev, contour) => {
     if (contour.coordinates.length === 0) return prev;
     const lineArray = [];
     const coords = recursiveProjection(contour.coordinates, zoom, x, y);
     coords.forEach((coords1) => {
-      const line = bboxClip(lineString(coords1[0], {value: contour.value}),[sw[0], sw[1], ne[0], ne[1]]);
-      const lcoords = line.geometry.type === "MultiLineString" ? line.geometry.coordinates : [line.geometry.coordinates];
-      lcoords.forEach((coords2) => {
-        if (coords2.length !== 0) lineArray.push(coords2);
-      });
+      const line = lineString(coords1[0], {value: contour.value});
+      lineArray.push(line.geometry.coordinates);
     });
     if (lineArray.length === 0) return prev;
-    prev.push(multiLineString(lineArray, {value: contour.value}));
+    const props = {
+      height: contour.value,
+      bold: contour.value % bold === 0
+    };
+    prev.push(multiLineString(lineArray, props));
     return prev;
   }, []));
-  const tileIndex = geojsonvt(final, {
-    maxZoom: 15,
-    buffer: 64
-  });
-  const pbt = tileIndex.getTile(zoom, x, y).features;
-  console.log(pbt);
 
-  fs.writeFileSync('./test.geojson', JSON.stringify(final));
+  const pbf = modified_geojson2mvt(noClip, zoom, x, y);
+
+  fs.writeFileSync(`./${zoom}_${x}_${y}.geojson`, JSON.stringify(noClip));
+  fs.writeFileSync(`./${zoom}_${x}_${y}.pbf`, pbf);
 }
 
 
