@@ -119,10 +119,10 @@ async function loader(zoom, x, y, dems, interval, bold) {
     return prev;
   }, []));
 
-  const pbf = modified_geojson2mvt(noClip, zoom, x, y);
+  //const pbf = modified_geojson2mvt(noClip, zoom, x, y);
 
   fs.writeFileSync(`./${zoom}_${x}_${y}.geojson`, JSON.stringify(noClip));
-  fs.writeFileSync(`./${zoom}_${x}_${y}.pbf`, pbf);
+  //fs.writeFileSync(`./${zoom}_${x}_${y}.pbf`, pbf);
 }
 
 
